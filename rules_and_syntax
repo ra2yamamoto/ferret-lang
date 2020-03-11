@@ -1,0 +1,15 @@
+# - comments
+{} - denotes a generic function, see generic function description
+[] - denotes a list
+'[] - denotes a map, see maps
+
+spaces separate items
+all lines followed by a semicolon (;)
+
+variables:
+
+setting/mutating variables is done by saying:
+  var_name var_value;
+  
+   e.g.
+    a 1; # creates a new variable a, set to 1 # this gets added to the local namespace
