@@ -1,15 +1,88 @@
+special characters:
+
 # - comments
 {} - denotes a generic function, see generic function description
-[] - denotes a list
-'[] - denotes a map, see maps
+[a b] - denotes a list
+[a: b] - denotes a map, see maps
+() - denote parameters to a function
 
-spaces separate items
+operators are normal functions
+
+spaces separate items in a list/parameters
 all lines followed by a semicolon (;)
 
 variables:
+
+Types: booleans, numbers, strings, functions, lists, maps
 
 setting/mutating variables is done by saying:
   var_name var_value;
   
    e.g.
     a 1; # creates a new variable a, set to 1 # this gets added to the local namespace
+    b a; # b = a
+    b +(a b); # b = a + b # -> 2
+
+namespaces are represented in the interpreter as a map, and are copied within functions and classes
+  parent namespace? child namespace?
+
+lists/maps:
+
+lists are written as []
+  e.g. 
+    my-list [0 1 2 3]; # a list of 0, 1, 2, 3
+  
+and are accessed with list:index
+  e.g. 
+    my-list:3 # -> 3
+    ["dog" "carrot" "orange"]:2 # -> "orange"
+
+maps are written as [], and are used (for now) in place of OOP
+  values are written as alternating keys and pairs
+
+  e.g.
+    my-map [:key1 "pair1" :key2 "pair2"]; # the colons are what differentiates a map from a list # empty lists can be made with [:]
+
+    a-map [:];
+    a-map << key: "value";
+
+    a-map; # -> [key: "value"]
+
+values are accessed with map:key
+  e.g. my-map:key2 # -> "pair2"
+
+default functions:
+  operators: +, -, *, /, <, >, <=, >=, =, !=, ^
+    operators serve as normal functions taking in two parameters
+
+  a -> {+(@1 2)} print # threading function that just executes each thing
+  a -> {+(@1 2)} print # threading function that mutates each and passes it along
+
+  << adds to a list or map
+    e.g.
+    [1 2] << 3 # -> [1 2 3]
+
+  and (boolean boolean...) -> boolean
+    returns true if both expressions return true
+  
+  or (boolean boolean...) -> boolean
+    returns true if any expression is true
+
+  not (boolean) -> boolean
+    returns the opposite of the given boolean
+
+  ++ (number) -> number
+    returns the given number + 1
+
+  -- (number) -> number
+    returns the given umber - 1
+
+  print (string) -> void
+    prints the given string to the java console
+
+  add (value list) -> list
+    MUTATES the given list by adding the given value to the end
+  
+  add (string value map) -> list
+    MUTATES the given list by adding the given value to the end
+
