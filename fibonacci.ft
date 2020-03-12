@@ -1,0 +1,15 @@
+# A sample program written in ferret, an implementation of a fibonacci function.
+
+fibonacci { # calculates the fibonacci sequence until a given number
+    end [];
+    number 1;
+
+    for (1...@1 {
+        end << +(number -(number 1));
+        ++number;
+    });
+
+    end;
+}
+
+print(fibonacci(10));

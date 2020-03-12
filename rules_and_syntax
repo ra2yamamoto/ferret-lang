@@ -51,14 +51,17 @@ maps are written as [], and are used (for now) in place of OOP
 values are accessed with map:key
   e.g. my-map:key2 # -> "pair2"
 
+TODO: FUNCTIONS
+
 default functions:
   operators: +, -, *, /, <, >, <=, >=, =, !=, ^
     operators serve as normal functions taking in two parameters
 
-  a -> {+(@1 2)} print # threading function that just executes each thing
-  a -> {+(@1 2)} print # threading function that mutates each and passes it along
+  a => {+(@1 2)} print # threading function that passes it along the chain, each feeding into the next
 
-  << adds to a list or map
+  list ++> {*(@1 @2)} # accumulates a list (foldl) into one value
+
+  list << value # adds to a list or map
     e.g.
     [1 2] << 3 # -> [1 2 3]
 
