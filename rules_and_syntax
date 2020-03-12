@@ -9,7 +9,7 @@ special characters:
 operators are normal functions
 
 spaces separate items in a list/parameters
-all lines followed by a semicolon (;)
+all lines followed by a semicolon ';'
 
 variables:
 
@@ -59,7 +59,7 @@ default functions:
 
   a => {+(@1 2)} print # threading function that passes it along the chain, each feeding into the next
 
-  list ++> {*(@1 @2)} # accumulates a list (foldl) into one value
+  list >>> {*(@1 @2)} # accumulates a list (foldl) into one value
 
   list << value # adds to a list or map
     e.g.

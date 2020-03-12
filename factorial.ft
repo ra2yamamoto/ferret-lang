@@ -25,7 +25,7 @@ factorial-mid { # medium way, good
 }
 
 factorial { # concise, and gross
-    1...@1 ++> {* (@1 @2)};
+    1...@1 >>> {* (@1 @2)};
 }
 
 print(factorial-mid(10));
