@@ -1,12 +1,17 @@
 # A sample program written in ferret, an implementation of a fibonacci function.
 
 fibonacci { # calculates the fibonacci sequence until a given number
-    end [];
+    end [1];
+    old-number 0;
     number 1;
-
-    for (1...@1 {
-        end << +(number -(number 1));
-        ++number;
+    
+    for (0...@1 (n) { # for each element in a list of 0...n
+        sum +(old-number number);
+        
+        end << sum;
+        
+        old-number number;
+        number sum;
     });
 
     end;
