@@ -1,91 +1,95 @@
-special characters:
+# **Special Characters**
 
-# - comments
-{} - denotes a generic function, see generic function description
-[a b] - denotes a list
-[a: b] - denotes a map, see maps
-() - denote parameters to a function
+`#` - a comment\
+`{}` - denotes a generic function, see generic function description\
+`[a b]` - denotes a list\
+`[a: b]` - denotes a map, see maps\
+`()` - denote parameters to a function
 
-operators are normal functions
+_Operators are normal functions_
 
-spaces separate items in a list/parameters
-all lines followed by a semicolon ';'
+_spaces separate items in a list/parameters_
+_all lines followed by a semicolon ';'_
 
-variables:
+# **Variables**
 
 Types: booleans, numbers, strings, functions, lists, maps
 
-setting/mutating variables is done by saying:
-  var_name var_value;
+setting/mutating variables is done by saying:\
+  `var_name var_value;`
   
    e.g.
-    a 1; # creates a new variable a, set to 1 # this gets added to the local namespace
-    b a; # b = a
-    b +(a b); # b = a + b # -> 2
+```
+a 1; # creates a new variable a, set to 1 # this gets added to the local namespace
+b a; # b = a
+b +(a b); # b = a + b # -> 2
+```
 
-namespaces are represented in the interpreter as a map, and are copied within functions and classes
-  parent namespace? child namespace?
+_namespaces are represented in the interpreter as a map, and are copied within functions and classes_
+  _parent namespace? child namespace?_
 
-lists/maps:
+# **Lists/Maps:**
 
-lists are written as []
+lists are written as []\
   e.g. 
-    my-list [0 1 2 3]; # a list of 0, 1, 2, 3
+    `my-list [0 1 2 3]; # a list of 0, 1, 2, 3`
   
-and are accessed with list:index
+and are accessed with `list:index`\
   e.g. 
-    my-list:3 # -> 3
-    ["dog" "carrot" "orange"]:2 # -> "orange"
-
-maps are written as [], and are used (for now) in place of OOP
-  values are written as alternating keys and pairs
+```
+my-list:3 # -> 3
+["dog" "carrot" "orange"]:2 # -> "orange"
+```
+maps are written as [], and should be used (for now) in place of OOP.\
+  Entries are written as alternating keys and pairs
 
   e.g.
-    my-map [:key1 "pair1" :key2 "pair2"]; # the colons are what differentiates a map from a list # empty lists can be made with [:]
+```
+my-map [:key1 "pair1" :key2 "pair2"]; # the colons are what differentiates a map from a list # empty lists can be made with [:]
 
-    a-map [:];
-    a-map << key: "value";
+a-map [:];
+a-map << key: "value";
 
-    a-map; # -> [key: "value"]
-
-values are accessed with map:key
-  e.g. my-map:key2 # -> "pair2"
+a-map; # -> [key: "value"]
+```
+values are accessed with `map:key`
+  e.g. `my-map:key2 # -> "pair2"`
 
 TODO: FUNCTIONS
 
-default functions:
-  operators: +, -, *, /, <, >, <=, >=, =, !=, ^
-    operators serve as normal functions taking in two parameters
+# **Default Functions:**
+  operators: `+, -, *, /, <, >, <=, >=, =, !=, ^`\
+    _operators serve as normal functions taking in two parameters_
 
-  a => {+(@1 2)} print # threading function that passes it along the chain, each feeding into the next
+  `value => function` e.g. ```a => {+(@1 2)} print # threading function that passes it along the chain, each feeding into the next```
 
-  list >>> {*(@1 @2)} # accumulates a list (foldl) into one value
+  `list >>> {*(@1 @2)}` # accumulates a list (foldl) into one value
 
-  list << value # adds to a list or map
+  `list << value` # adds to a list or map
     e.g.
-    [1 2] << 3 # -> [1 2 3]
+    `[1 2] << 3 # -> [1 2 3]`
 
-  and (boolean boolean...) -> boolean
+  `and (boolean boolean...) -> boolean`
     returns true if both expressions return true
   
-  or (boolean boolean...) -> boolean
+  `or (boolean boolean...) -> boolean`
     returns true if any expression is true
 
-  not (boolean) -> boolean
+  `not (boolean) -> boolean`
     returns the opposite of the given boolean
 
-  ++ (number) -> number
+  `++ (number) -> number`
     returns the given number + 1
 
-  -- (number) -> number
+  `-- (number) -> number`
     returns the given umber - 1
 
-  print (string) -> void
+  `print (string) -> void`
     prints the given string to the java console
 
-  add (value list) -> list
+  `add (value list) -> list`
     MUTATES the given list by adding the given value to the end
   
-  add (string value map) -> list
+  `add (string value map) -> list`
     MUTATES the given list by adding the given value to the end
 
