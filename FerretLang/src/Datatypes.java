@@ -315,7 +315,7 @@ class Function implements IValue {
 			}
 		}
 		
-		return this.body.eval(this.ns.copyWith(argNS)); // TODO: the issue with this is that any modifications to global variable won't actually change it
+		return this.body.eval(this.ns.copyWith(argNS));
 	}
 
 	public Datatype getType() {
@@ -505,7 +505,8 @@ class Definition extends ANode { // analogous to a variable assignment, e.g. 'a 
 	
 	public IValue eval(Namespace ns) {
 		this.setNamespace(ns);
-		this.ns.set(this.key, this.value);
+		this.ns.set(this.key, this.value.eval(this.ns));
+		
 		return this.ns.get(this.key);
 	}
 
@@ -777,5 +778,19 @@ class ValueTests {
 						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
 		
 		t.checkExpect(new Double(3.0).equals(new Double(3)), true);
+		
+		initNS();
+		
+		Function f = new Function(new ArrayList<String>(Arrays.asList("a")), Sequence.makeSequence(namespace, // (a) > { # a function f with parameter a
+				new Definition("a", new FunctionCall(new NamedFunction("^", namespace),
+						new ArrayList<IValue>(Arrays.asList(new Reference("a", namespace), new NumberLiteral(2, namespace))), // a ^(a 2); # set a (locally) to a squared
+						namespace), namespace),
+				new FunctionCall(new NamedFunction("+", namespace),
+						new ArrayList<IValue>(Arrays.asList(new Reference("a", namespace), new NumberLiteral(400, namespace))), // +(a 400); # return a + 400
+						namespace)), namespace); // }
+		
+		t.checkExpect(Sequence.makeSequence(namespace, new FunctionCall(f,
+				new ArrayList<IValue>(Arrays.asList(new NumberLiteral(4, namespace))),
+				namespace)).eval(namespace), new NumberLiteral(416, namespace));
 	}
 }
