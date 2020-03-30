@@ -2,7 +2,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.function.ToDoubleFunction;
+import java.util.stream.Collectors;
 
 import tester.Tester;
 
@@ -17,9 +20,9 @@ class Namespace {
 		this.namespaces = nses;
 	}
 	
-	IValue get (String key) {
+	IValue get (String key) { // iterate backwards here
 		
-		for (int i = 0; i < this.namespaces.size(); i++) {
+		for (int i = this.namespaces.size() - 1; i >= 0; i--) {
 			Map<String, IValue> map = this.namespaces.get(i);
 			
 			if (map.containsKey(key)) {
@@ -117,7 +120,7 @@ abstract class ALiteral implements IValue {
 
 class NumberLiteral extends ALiteral {
 	NumberLiteral (Number value, Namespace ns) {
-		super(value, ns);
+		super(value.doubleValue(), ns);
 	}
 
 	public Datatype getType () {
@@ -325,6 +328,65 @@ class Function implements IValue {
 	
 }
 
+@FunctionalInterface
+interface IOperation {
+	IValue apply(ArrayList<ALiteral> args);
+};
+
+class NamedFunction extends Function {
+	Map<String, IOperation> funcs = new HashMap<>();
+	
+	String type;
+	IOperation operation;
+	
+	NamedFunction (String type, Namespace ns) {
+		super(new ArrayList<String>(), new Sequence(new ArrayList<IExpression>(), ns), ns);
+		
+		ToDoubleFunction<ALiteral> literalToDouble = literal -> ((Number) literal.value).doubleValue(); 
+		
+		funcs.put("+", l -> new NumberLiteral(l.stream().collect(Collectors.summingDouble(e -> ((Number) e.value).doubleValue())), this.ns));
+		funcs.put("-", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a - b).getAsDouble(), this.ns));
+		funcs.put("*", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce(1, (a, b) -> a * b), this.ns));
+		funcs.put("^", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> Math.pow(a, b)).getAsDouble(), this.ns));
+		//funcs.put("/", l -> new NumberLiteral(((Number) l.get(0).value).doubleValue() / ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("/", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a / b).getAsDouble(), this.ns));
+		
+		
+		funcs.put("<", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() < ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put(">", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() > ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("<=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() <= ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put(">=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() >= ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("=", l -> new BooleanLiteral(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue())), this.ns));
+		funcs.put("!=", l -> new BooleanLiteral(!(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue()))), this.ns));
+
+		funcs.put("and", l -> new BooleanLiteral(l.stream().allMatch(e -> (Boolean) e.value), this.ns));
+		funcs.put("or", l -> new BooleanLiteral(l.stream().anyMatch(e -> (Boolean) e.value), this.ns));
+		funcs.put("not", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
+		funcs.put("!", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
+		
+		this.type = type;
+		this.operation = funcs.get(type);
+		
+		if (this.operation == null) {
+			throw new IllegalArgumentException("NamedFunction given a non-standard function");
+		}
+	}
+	
+	public IValue call (ArrayList<IValue> args, Namespace ns) {
+		ArrayList<ALiteral> endArgs = new ArrayList<>();
+		
+		for (int i = 0; i < args.size(); i++) { // all the args we get should be as reduced as possible, as we eval() them in the functionCall eval()
+			if (!(args.get(i) instanceof ALiteral)) { // if the IValue at the index i isn't a literal
+				// ERROR TODO
+			} else {
+				endArgs.add((ALiteral) args.get(i));
+			}
+		}
+		
+		return this.operation.apply(endArgs);
+	}
+}
+
 class Sequence implements IExpression { // CHANGE SEQUENCES TO SET THEIR OWN NAMESPACE ON EVAL AND GIVE ALL THE CHILDREN THE NAMESPACE
 	
 	ArrayList<IExpression> body;
@@ -395,7 +457,14 @@ class FunctionCall extends ANode { // have to have their own args stored, actuql
 	
 	public IValue eval(Namespace ns) {
 		this.setNamespace(ns);
-		return function.call(this.args, this.getNamespace());
+		
+		ArrayList<IValue> finalArgs = new ArrayList<>();
+		
+		for (int i = 0; i < this.args.size(); i++) {
+			finalArgs.add(this.args.get(i).eval(this.ns));
+		}
+		
+		return function.call(finalArgs, this.getNamespace());
 	}
 	
 	public Datatype getType() {
@@ -616,5 +685,97 @@ class ValueTests {
 		
 		t.checkExpect(ns1.get("a"), n2);
 	}
-
+	
+	void testNamedFuncs (Tester t) {
+		initNS();
+		BooleanLiteral tru = new BooleanLiteral(true, namespace);
+		BooleanLiteral fal = new BooleanLiteral(false, namespace);
+		NumberLiteral num1 = new NumberLiteral(1, namespace);
+		NumberLiteral num2 = new NumberLiteral(2, namespace);
+		NumberLiteral num3 = new NumberLiteral(3, namespace);
+		
+		NumberLiteral num6 = new NumberLiteral(6, namespace);
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("+", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num1, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), num3); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("+", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num1, num2, num2, num1)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), num6); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("-", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num1, num2, num2, num1)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new NumberLiteral(-4, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("*", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num3, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new NumberLiteral(6, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("^", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num2, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new NumberLiteral(4, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("/", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num6, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new NumberLiteral(3, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("/", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num6, num2, num3)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new NumberLiteral(1, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("<", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num6, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(false, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction(">", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num6, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction(">=", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num2, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("=", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num2, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("!=", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(num2, num2)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(false, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("and", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(tru, tru, fal, fal)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(false, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("and", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(tru, tru, tru, tru)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("or", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(fal, fal, fal, tru)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
+		
+		t.checkExpect(Sequence.makeSequence(namespace, // make a new sequence
+				new FunctionCall(new NamedFunction("!", namespace), // make a new function call on the named function '+'
+						new ArrayList<IValue>(Arrays.asList(fal)), // give it arguments num1 (1) and num2 (2)
+						namespace)).eval(namespace), new BooleanLiteral(true, namespace)); // evaluate it
+		
+		t.checkExpect(new Double(3.0).equals(new Double(3)), true);
+	}
 }

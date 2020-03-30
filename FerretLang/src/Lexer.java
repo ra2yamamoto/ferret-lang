@@ -162,8 +162,8 @@ class Lexer {
 				}
 			}
 			
-			if (current.matches("[a-zA-Z|+|\\-|*|/|<|>|=|!|^|@]")) { // if a Identifier
-				int nextIndex = indexUntilNotMatching(code, i, "[a-zA-Z0-9|+|\\-|*|/|<|>|=|!|^|@]");
+			if (current.matches("[a-zA-Z|+|\\-|*|/|<|>|&|=|!|^|@]")) { // if a Identifier
+				int nextIndex = indexUntilNotMatching(code, i, "[a-zA-Z0-9|+|\\-|*|/|&|<|>|=|!|^|@]");
 				String toAdd = code.substring(i, nextIndex + 1);
 				
 				if (toAdd.equals(">")) { // kinda gross
