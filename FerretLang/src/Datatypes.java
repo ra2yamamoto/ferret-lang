@@ -20,6 +20,10 @@ class Namespace {
 		this.namespaces = nses;
 	}
 	
+	Namespace () {
+		this.namespaces = new ArrayList<Map<String, IValue>>();
+	}
+	
 	IValue get (String key) { // iterate backwards here
 		
 		for (int i = this.namespaces.size() - 1; i >= 0; i--) {
@@ -65,6 +69,7 @@ interface IExpression {
 	Namespace getNamespace();
 	void setNamespace(Namespace ns);
 	IValue eval(Namespace ns);
+	String printOutput();
 }
 
 interface IValue extends IExpression {
@@ -87,6 +92,10 @@ class Nil implements IValue {
 	}
 	
 	public void setNamespace (Namespace ns) {}
+	
+	public String printOutput () {
+		return "nil";
+	}
 
 	public Datatype getType() {
 		return Datatype.NIL;
@@ -96,15 +105,17 @@ class Nil implements IValue {
 
 abstract class ALiteral implements IValue {
 	Object value;
-	Namespace ns;
 	
 	ALiteral (Object value, Namespace ns) {
 		this.value = value;
-		this.ns = ns;
+	}
+	
+	ALiteral (Object value) {
+		this.value = value;
 	}
 
 	public Namespace getNamespace() {
-		return this.ns;
+		return null;
 	}
 	
 	public IValue eval(Namespace ns) {
@@ -112,8 +123,10 @@ abstract class ALiteral implements IValue {
 		return this;
 	}
 	
-	public void setNamespace (Namespace ns) {
-		this.ns = ns;
+	public void setNamespace (Namespace ns) {}
+	
+	public String printOutput () {
+		return value.toString();
 	}
 	
 }
@@ -121,6 +134,10 @@ abstract class ALiteral implements IValue {
 class NumberLiteral extends ALiteral {
 	NumberLiteral (Number value, Namespace ns) {
 		super(value.doubleValue(), ns);
+	}
+	
+	NumberLiteral (Number value) {
+		super(value.doubleValue());
 	}
 
 	public Datatype getType () {
@@ -132,6 +149,10 @@ class BooleanLiteral extends ALiteral {
 	BooleanLiteral (boolean value, Namespace ns) {
 		super(value, ns);
 	}
+	
+	BooleanLiteral (boolean value) {
+		super(value);
+	}
 
 	public Datatype getType () {
 		return Datatype.BOOLEAN;
@@ -141,6 +162,10 @@ class BooleanLiteral extends ALiteral {
 class StringLiteral extends ALiteral {
 	StringLiteral (String value, Namespace ns) {
 		super(value, ns);
+	}
+	
+	StringLiteral (String value) {
+		super(value);
 	}
 
 	public Datatype getType () {
@@ -157,6 +182,11 @@ class Reference implements IValue { // a variable reference, e.g. 'a;' -> 1, ass
 	Reference (String key, Namespace ns) {
 		this.key = key;
 		this.ns = ns;
+	}
+	
+	Reference (String key) {
+		this.key = key;
+		this.ns = new Namespace();
 	}
 	
 	public IValue eval(Namespace ns) {
@@ -176,6 +206,12 @@ class Reference implements IValue { // a variable reference, e.g. 'a;' -> 1, ass
 	
 	public void setNamespace (Namespace ns) {
 		this.ns = ns;
+	}
+	
+	public String printOutput () {
+		IValue result = this.ns.get(this.key); // inefficient
+		
+		return result == null ? "nil" : result.printOutput();
 	}
 }
 
@@ -238,6 +274,10 @@ class ListValue implements ICollection {
 	public void setNamespace (Namespace ns) {
 		this.ns = ns;
 	}
+	
+	public String printOutput () {
+		return "nil";
+	}
 }
 
 class MapValue implements ICollection { // I'm trying to avoid conflicts with the actual Map class
@@ -275,6 +315,10 @@ class MapValue implements ICollection { // I'm trying to avoid conflicts with th
 	public void setNamespace (Namespace ns) {
 		this.ns = ns;
 	}
+	
+	public String printOutput () {
+		return "nil";
+	}
 }
 
 class Function implements IValue {
@@ -287,6 +331,11 @@ class Function implements IValue {
 		this.params = exArgs;
 		this.body = body;
 		this.ns = ns;
+	}
+	
+	Function (ArrayList<String> exArgs, Sequence body) {
+		this.params = exArgs;
+		this.body = body;
 	}
 	
 	public Namespace getNamespace() {
@@ -326,18 +375,23 @@ class Function implements IValue {
 		this.ns = ns;
 	}
 	
+	public String printOutput () {
+		return "function";
+	}
+	
 }
 
 @FunctionalInterface
-interface IOperation {
+interface IFuncOperation {
 	IValue apply(ArrayList<ALiteral> args);
 };
 
 class NamedFunction extends Function {
-	Map<String, IOperation> funcs = new HashMap<>();
+	Map<String, IFuncOperation> funcs = new HashMap<>();
 	
 	String type;
-	IOperation operation;
+	IFuncOperation operation;
+	static boolean firstPrint = true;
 	
 	NamedFunction (String type, Namespace ns) {
 		super(new ArrayList<String>(), new Sequence(new ArrayList<IExpression>(), ns), ns);
@@ -363,6 +417,41 @@ class NamedFunction extends Function {
 		funcs.put("or", l -> new BooleanLiteral(l.stream().anyMatch(e -> (Boolean) e.value), this.ns));
 		funcs.put("not", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
 		funcs.put("!", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
+		funcs.put("print", l -> new Nil());
+		
+		this.type = type;
+		this.operation = funcs.get(type);
+		
+		if (this.operation == null) {
+			throw new IllegalArgumentException("NamedFunction given a non-standard function");
+		}
+	}
+	
+	NamedFunction (String type) {
+		super(new ArrayList<String>(), new Sequence(new ArrayList<IExpression>(), new Namespace()));
+		
+		ToDoubleFunction<ALiteral> literalToDouble = literal -> ((Number) literal.value).doubleValue(); 
+		
+		funcs.put("+", l -> new NumberLiteral(l.stream().collect(Collectors.summingDouble(e -> ((Number) e.value).doubleValue())), this.ns));
+		funcs.put("-", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a - b).getAsDouble(), this.ns));
+		funcs.put("*", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce(1, (a, b) -> a * b), this.ns));
+		funcs.put("^", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> Math.pow(a, b)).getAsDouble(), this.ns));
+		//funcs.put("/", l -> new NumberLiteral(((Number) l.get(0).value).doubleValue() / ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("/", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a / b).getAsDouble(), this.ns));
+		
+		
+		funcs.put("<", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() < ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put(">", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() > ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("<=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() <= ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put(">=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() >= ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("=", l -> new BooleanLiteral(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue())), this.ns));
+		funcs.put("!=", l -> new BooleanLiteral(!(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue()))), this.ns));
+
+		funcs.put("and", l -> new BooleanLiteral(l.stream().allMatch(e -> (Boolean) e.value), this.ns));
+		funcs.put("or", l -> new BooleanLiteral(l.stream().anyMatch(e -> (Boolean) e.value), this.ns));
+		funcs.put("not", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
+		funcs.put("!", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
+		funcs.put("print", l -> new Nil());
 		
 		this.type = type;
 		this.operation = funcs.get(type);
@@ -373,7 +462,24 @@ class NamedFunction extends Function {
 	}
 	
 	public IValue call (ArrayList<IValue> args, Namespace ns) {
+		this.setNamespace(ns);
+		
 		ArrayList<ALiteral> endArgs = new ArrayList<>();
+		
+		if (this.type.equals("print")) {
+			StringBuilder end = new StringBuilder();
+			
+			args.stream().forEach(val -> end.append(val.printOutput() + "\n"));
+			
+			if (firstPrint) {
+				System.out.println("Ferret output: \n\n" + end.toString());
+				firstPrint = false;
+			} else {
+				System.out.println(end.toString());
+			}
+			
+			return new StringLiteral(end.toString());
+		}
 		
 		for (int i = 0; i < args.size(); i++) { // all the args we get should be as reduced as possible, as we eval() them in the functionCall eval()
 			if (!(args.get(i) instanceof ALiteral)) { // if the IValue at the index i isn't a literal
@@ -420,8 +526,16 @@ class Sequence implements IExpression { // CHANGE SEQUENCES TO SET THEIR OWN NAM
 		return new Sequence(new ArrayList<IExpression>(Arrays.asList(expr)), ns);
 	}
 	
+	static Sequence makeSequence (IExpression... expr) {
+		return new Sequence(new ArrayList<IExpression>(Arrays.asList(expr)), new Namespace());
+	}
+	
 	public void setNamespace (Namespace ns) {
 		this.ns = ns;
+	}
+	
+	public String printOutput () {
+		return "sequence";
 	}
 	
 }
@@ -442,29 +556,49 @@ abstract class ANode implements IValue {
 	public void setNamespace (Namespace ns) {
 		this.ns = ns;
 	}
+	
+	public String printOutput () {
+		return "AST node";
+	}
+	
+	public Datatype getType() {
+		return Datatype.AST_NODE;
+	}
 }
 
 class FunctionCall extends ANode { // have to have their own args stored, actuqlly, same with all the ANodes, args don't need to be in every IExpression
 
-	Function function;
+	IValue maybeFunc;
 	ArrayList<IValue> args;
 	
-	FunctionCall (Function f, ArrayList<IValue> args, Namespace ns) {
+	FunctionCall (IValue func, ArrayList<IValue> args, Namespace ns) { // takes in an IValue that has to evaluate to a function
 		super(ns);
-		this.function = f;
+		this.maybeFunc = func;
+		this.args = args;
+	}
+	
+	FunctionCall (IValue func, ArrayList<IValue> args) { // takes in an IValue that has to evaluate to a function
+		super(new Namespace());
+		this.maybeFunc = func;
 		this.args = args;
 	}
 	
 	public IValue eval(Namespace ns) {
 		this.setNamespace(ns);
 		
-		ArrayList<IValue> finalArgs = new ArrayList<>();
+		IValue result = this.maybeFunc.eval(this.ns); // run here to work with namespaces // evaluates, to work with references
+		
+		if (!(result instanceof Function)) { // if the result of the evaluation isn't a function
+			throw new IllegalArgumentException("Tried to call a function on something that isn't a function.");
+		}
+		
+		ArrayList<IValue> finalArgs = new ArrayList<>(); // takes up space, worth doing in place?
 		
 		for (int i = 0; i < this.args.size(); i++) {
 			finalArgs.add(this.args.get(i).eval(this.ns));
 		}
 		
-		return function.call(finalArgs, this.getNamespace());
+		return ((Function) result).call(finalArgs, this.getNamespace());
 	}
 	
 	public Datatype getType() {
@@ -503,6 +637,12 @@ class Definition extends ANode { // analogous to a variable assignment, e.g. 'a 
 		this.value = value;
 	}
 	
+	Definition (String key, IValue value) {
+		super(new Namespace());
+		this.key = key;
+		this.value = value;
+	}
+	
 	public IValue eval(Namespace ns) {
 		this.setNamespace(ns);
 		this.ns.set(this.key, this.value.eval(this.ns));
@@ -516,7 +656,48 @@ class Definition extends ANode { // analogous to a variable assignment, e.g. 'a 
 	
 }
 
+class Conditional extends ANode {
+
+	IExpression condition;
+	IExpression then;
+	IExpression elseExpr;
+	
+	Conditional(IExpression condition, IExpression then, IExpression elseExpr) {
+		super(new Namespace());
+		
+		this.condition = condition;
+		this.then = then;
+		this.elseExpr = elseExpr;
+		// TODO Auto-generated constructor stub
+	}
+	
+	public IValue eval(Namespace ns) {
+		this.setNamespace(ns);
+		IValue evaledCond = condition.eval(this.ns);
+		
+		if (!(evaledCond instanceof BooleanLiteral)) {
+			throw new IllegalArgumentException("Condition in if statement returned a " + evaledCond.getClass().getName() + ", not a boolean.");
+		}
+		
+		// The main calculation:
+		
+		if ((boolean) ((BooleanLiteral) evaledCond).value) { // lovely casting
+			return then.eval(this.ns);
+		} else {
+			return elseExpr.eval(this.ns);
+		}
+		
+	}
+	
+}
+
 // TODO: Function, then fill out the parser with all the different ast ANodes
+
+class Utils {
+	static <T> ArrayList<T> list (T ...items) {
+		return new ArrayList<T>(Arrays.asList(items));
+	}
+}
 
 class ValueTests {
 	//Every program is encased in a large Sequence
@@ -792,5 +973,79 @@ class ValueTests {
 		t.checkExpect(Sequence.makeSequence(namespace, new FunctionCall(f,
 				new ArrayList<IValue>(Arrays.asList(new NumberLiteral(4, namespace))),
 				namespace)).eval(namespace), new NumberLiteral(416, namespace));
+		
+		Sequence.makeSequence(namespace, new FunctionCall(new NamedFunction("print", namespace),
+				new ArrayList<IValue>(Arrays.asList(f, tru, fal, num1, num2, num6)), namespace)).eval(namespace);
+		
+		Definition starF = new Definition("f", f, namespace);
+		
+//		t.checkExpect(Sequence.makeSequence(namespace, starF, // f {function f}; # assigns f to the Function f
+//				new FunctionCall(new Reference("orange", namespace), // f (4); # passes a reference to the function call
+//						new ArrayList<IValue>(Arrays.asList(new NumberLiteral(4, namespace))),
+//				namespace)).eval(namespace), new NumberLiteral(416, namespace));
+		
+//		t.checkExpect(Sequence.makeSequence(namespace, 
+//				new Definition("func", 
+//						new Function(new ArrayList<String>(), 
+//								Sequence.makeSequence(namespace, new Reference("@1", namespace)), namespace),
+//						namespace), 
+//				new Definition("orange", new NumberLiteral(5, namespace), namespace), 
+//				
+//				new FunctionCall(new Reference("func", namespace), 
+//				new ArrayList<IValue>(Arrays.asList(new NumberLiteral(5, namespace))), namespace)).eval(namespace), new NumberLiteral(5, namespace));
+	
+		t.checkExpect(Sequence.makeSequence(namespace, 
+				new Definition("orange", new Function(Utils.list(), // orange { !(@1) };
+						Sequence.makeSequence(namespace, new FunctionCall(new NamedFunction("!"), Utils.list(new Reference("@1")))))), // orange(true);
+				new FunctionCall(new Reference("orange"), Utils.list(new BooleanLiteral(true)))).eval(namespace), new BooleanLiteral(false)); // # -> false;
+	}
+	
+	void testCond (Tester t) {
+		
+		initNS();
+
+		/**# recursive test
+		 * r {
+		 * 
+		 * 	if ({>(@1 0)} { # if statements have to take in three IExpressions, the first must evaluate to a boolean
+		 * 		print(@1);
+		 * 		r( -(@1 1) );
+		 * 	} {
+		 * 		print(@1);
+		 * 	})
+		 * 
+		 * }
+		 * 
+		 * r(5); # -> Ferret: 5 4 3 2 1 0
+		 */
+		
+		t.checkExpect(Sequence.makeSequence(new BooleanLiteral(true)).eval(namespace), new BooleanLiteral(true)); // recursion test
+		
+		t.checkExpect(Sequence.makeSequence(new Conditional(new BooleanLiteral(true), new BooleanLiteral(true), new BooleanLiteral(false))).eval(namespace), new BooleanLiteral(true));
+		t.checkExpect(Sequence.makeSequence(new Conditional(new BooleanLiteral(false), new BooleanLiteral(true), new BooleanLiteral(false))).eval(namespace), new BooleanLiteral(false));
+		
+		t.checkExpect(Sequence.makeSequence(new Definition("greaterThanTwice", 
+				new Function(Utils.list("a", "b"), // greaterThanTwice (a b) > { # a function greaterThanTwice, which returns a boolean of if a is greater than 2 * b
+						Sequence.makeSequence(new FunctionCall(new NamedFunction(">"), 
+								Utils.list(new Reference("a"), 
+										new FunctionCall(new NamedFunction("*"), // >(a *(b 2)); }
+												Utils.list(new Reference("b"), new NumberLiteral(2)))))))),
+				new FunctionCall(new Reference("greaterThanTwice"), Utils.list(new NumberLiteral(11), new NumberLiteral(5)))).eval(namespace), 
+				new BooleanLiteral(true)); // greaterThanTwice(11 5); # -> true
+		
+		// recursion test
+		
+		Sequence recursiveProgram = Sequence.makeSequence(new Definition("recursive", new Function( // define a new function defined as "recursive", with expected parameters "a"
+					Utils.list("a"), Sequence.makeSequence(
+								new Conditional(new FunctionCall(new NamedFunction(">"), Utils.list(new Reference("a"), new NumberLiteral(0))), // inside the function, if a is greater than 0
+											Sequence.makeSequence(new FunctionCall(new NamedFunction("print"), Utils.list(new Reference("a"))), // print a
+													new FunctionCall(new Reference("recursive"), Utils.list( // and recur by making a function call to "recursive", if the namespace passes down properly, "recursive" should still be found
+															new FunctionCall(new NamedFunction("-"), Utils.list(new Reference("a"), new NumberLiteral(1))))) // recur with -1 to a
+													), new FunctionCall(new NamedFunction("print"), Utils.list(new Reference("a"))) // at the base case, return a reference to a
+										)
+							)
+				)), new FunctionCall(new Reference("recursive"), Utils.list(new NumberLiteral(5)))); // call the function with args 5
+		
+		recursiveProgram.eval(namespace);
 	}
 }
