@@ -5,7 +5,7 @@ fibonacci { # calculates the fibonacci sequence until a given number
     old-number 0;
     number 1;
     
-    for (0...@1 (n) { # for each element in a list of 0...n
+    for (0...@1 { # for each element in a list of 0...n
         sum +(old-number number);
         
         end << sum;
