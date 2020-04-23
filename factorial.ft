@@ -43,3 +43,9 @@ static int factorial(int n) {
 }
 
 ###
+
+### Clojure code given for more context
+
+(defn factorial [a] (reduce * (range 1 (+ a 1))))
+
+###
