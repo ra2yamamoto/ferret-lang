@@ -13,7 +13,7 @@ enum Datatype {
 	BOOLEAN, NUMBER, STRING, FUNCTION, LIST, MAP, OPERATOR, NIL, AST_NODE
 }
 
-class Namespace {
+class Namespace { // The core of variable definitions and scoping
 	ArrayList<Map<String, IValue>> namespaces; // Namespaces are stored as a list of maps so that proper scopes can be retained
 	
 	Namespace (ArrayList<Map<String, IValue>> nses) {
@@ -22,9 +22,10 @@ class Namespace {
 	
 	Namespace () {
 		this.namespaces = new ArrayList<Map<String, IValue>>();
+		namespaces.add(new HashMap<String, IValue>());
 	}
 	
-	IValue get (String key) { // iterate backwards here
+	IValue get (String key) { // iterate backwards here to look at local scope before larger
 		
 		for (int i = this.namespaces.size() - 1; i >= 0; i--) {
 			Map<String, IValue> map = this.namespaces.get(i);
@@ -56,32 +57,43 @@ class Namespace {
 		return this.get(key);
 	}
 	
-	Namespace copyWith (Map<String, IValue> otherMap) {
+	Namespace copyWith (Map<String, IValue> otherMap) { // this function is called when a new funcion/scope is introduced
 		ArrayList<Map<String, IValue>> end = new ArrayList<>();
 		end.addAll(namespaces);
-		end.add(otherMap);
-		
+		end.add(otherMap); // in order to ensure modifications to global variables (or variables outside the scope) still get modified (maybe closures?)
+							// uses the fact that Java will just pass down the pointers to the maps in any new namespaces created, so the same object is reference during set/get operations
 		return new Namespace(end);
+	}
+	
+	static Namespace stdlib () { // the "standard library", essentially a manual namespace created to access "named functions". Should be passed into the first sequences eval
+		Map<String, IValue> mappings = new HashMap<>();
+		
+		Utils utils = new Utils();
+		utils.loadNamed(); // offloading the map creation/setting/getting to one object
+		
+		utils.funcs.forEach((s, v) -> { mappings.put(s, new NamedFunction(s, utils)); }); // put a corresponding string to each named function for each named function in the collection
+		
+		return new Namespace(Utils.list(mappings)); // return a new namespace
 	}
 }
 
-interface IExpression {
-	Namespace getNamespace();
+interface IExpression { // Everything in the AST is an IExpression
+	Namespace getNamespace(); // some of these methods are redundant or not necessary
 	void setNamespace(Namespace ns);
-	IValue eval(Namespace ns);
-	String printOutput();
+	IValue eval(Namespace ns); // used to recursively evaluate the final tree
+	String printOutput(); // similar to Java's toString method, used for 'print();' calls
 }
 
-interface IValue extends IExpression {
+interface IValue extends IExpression { // represents a value in the AST
 	Datatype getType();
 }
 
-interface ICollection extends IValue {
-	IValue get(String identifier);
-	IValue set(String identifier, IValue entry);
+interface ICollection extends IValue { // Used to define maps/lists
+	IValue get(IValue identifier, Namespace ns);
+	IValue set(IValue entry, IValue location, Namespace ns);
 }
 
-class Nil implements IValue {
+class Nil implements IValue { // analogous to null
 
 	public Namespace getNamespace() {
 		return null;
@@ -103,8 +115,8 @@ class Nil implements IValue {
 
 // LITERALS
 
-abstract class ALiteral implements IValue {
-	Object value;
+abstract class ALiteral implements IValue { // encompasses all literals supported by the language: Numbers, Booleans, and Strings
+	Object value;                          // Basically a wrapper around Java's Types
 	
 	ALiteral (Object value, Namespace ns) {
 		this.value = value;
@@ -129,11 +141,15 @@ abstract class ALiteral implements IValue {
 		return value.toString();
 	}
 	
+	public String toString () {
+		return value.toString();
+	}
+	
 }
 
 class NumberLiteral extends ALiteral {
 	NumberLiteral (Number value, Namespace ns) {
-		super(value.doubleValue(), ns);
+		super(value.doubleValue(), ns); // numbers are all converted to doubles for equality and simplicities sake
 	}
 	
 	NumberLiteral (Number value) {
@@ -170,6 +186,10 @@ class StringLiteral extends ALiteral {
 
 	public Datatype getType () {
 		return Datatype.STRING;
+	}
+	
+	public String toString () {
+		return value.toString();
 	}
 }
 
@@ -213,18 +233,22 @@ class Reference implements IValue { // a variable reference, e.g. 'a;' -> 1, ass
 		
 		return result == null ? "nil" : result.printOutput();
 	}
+	
+	public String toString () {
+		return "(Ref " + this.key + ")";
+	}
 }
 
 // COLLECTIONS
 
-class ListValue implements ICollection {
+class ListValue implements ICollection { // represents a list
 	
 	ArrayList<IValue> value;
 	Namespace ns;
 	
-	ListValue (ArrayList<IValue> value, Namespace ns) {
+	ListValue (ArrayList<IValue> value) {
 		this.value = value;
-		this.ns = ns;
+		this.ns = null;
 	}
 	
 	public Namespace getNamespace() {
@@ -240,35 +264,82 @@ class ListValue implements ICollection {
 		return Datatype.LIST;
 	}
 	
-	public IValue get(String identifier) {
-		int index;
+	public IValue get(IValue identifier, Namespace ns) {
+		this.setNamespace(ns);
 		
-		try {
-			
-			index = Integer.valueOf(identifier);
-			return value.get(index);
-			
-		} catch (Exception e) {}
+		double identifierDouble;
+		IValue maybeIndex = identifier.eval(this.ns); // evaluate first, to get references and such
 		
-		return new Nil();
+		if (!(maybeIndex instanceof NumberLiteral)) {
+			throw new IllegalArgumentException("Get operation on List expected an index, given " + maybeIndex.getClass().getName());
+		} 
+		
+		identifierDouble = (double) ((NumberLiteral) maybeIndex).value;
+		
+		if (identifierDouble != Math.floor(identifierDouble)) {
+			throw new IllegalArgumentException("Get operation on List expected an integer, given " + identifierDouble);
+		}
+		
+		if (identifierDouble > this.value.size() - 1 || identifierDouble < (-this.value.size() + 1)) {
+			System.out.println("Get operation on List: index out of bounds");
+			return new Nil();
+		}
+		
+		identifierDouble = identifierDouble < 0 ? this.value.size() + identifierDouble : identifierDouble;
+		
+		IValue end = new Nil();
+		
+		try { // just in case there is an indexoutofbounds exception
+			end = value.get((int) identifierDouble);
+			return end;
+		} catch (Exception e) {
+			
+		}
+		
+		return end;
 	}
 	
-	public IValue set(String identifier, IValue entry) {
-		int index;
+	// most interactions with lists would occur using a ":" operator
+	
+	public IValue set(IValue entry, IValue location, Namespace ns) { // entry can be whatever, location has to be a NumberLiteral
+		this.setNamespace(ns);
 		
+		// if set is given -1 or the same as the .size of the list, a new thing is added
+		
+		// evaluate both
+		IValue evalEntry = entry.eval(this.ns);
+		IValue evalLocation = location.eval(this.ns);
+		
+		if (!(evalLocation instanceof NumberLiteral)) {
+			throw new IllegalArgumentException("Set operation on List given an illegal index");
+		}
+		
+		double index = (double) ((NumberLiteral) evalLocation).value;
+		
+		if (index != Math.floor(index)) {
+			throw new IllegalArgumentException("Set operation on List given a non-integer index.");
+		}
+		
+		if ((int) index > this.value.size() || (int) index < (-this.value.size())) {
+			System.out.println("Array Index out of bounds in List set call.");
+			return new Nil();
+		}
+		
+		index = index < 0 ? this.value.size() + 1 + (int) index : index; // wraparound once
+			// if the index is negative, wraparound
 		try {
-			index = Integer.valueOf(identifier);
 			
-			if (index < value.size() && index > 0) {
-				value.set(index, entry);
+			if (index == this.value.size()) {
+				value.add(evalEntry);
 			} else {
-				value.add(entry);
+				value.set((int) index, evalEntry);
 			}
+			
 		} catch (Exception e) {
 			return new Nil(); // handle this error better TODO
 		}
 		
-		return this;
+		return this; // or the entry?
 	}
 	
 	public void setNamespace (Namespace ns) {
@@ -278,16 +349,28 @@ class ListValue implements ICollection {
 	public String printOutput () {
 		return "nil";
 	}
+	
+	public String toString () {
+		return this.value.toString();
+	}
 }
 
-class MapValue implements ICollection { // I'm trying to avoid conflicts with the actual Map class
+class MapValue implements ICollection { // represents a map
 	
-	Map<String, IValue> value;
+	Map<IValue, IValue> value;
 	Namespace ns;
 	
-	MapValue (Map<String, IValue> value, Namespace ns) {
-		this.value = value;
-		this.ns = ns;
+	MapValue (ArrayList<IValue> keys, ArrayList<IValue> values) {
+		this.value = new HashMap<IValue, IValue>();
+		this.ns = new Namespace();
+		
+		if (keys.size() != values.size()) {
+			throw new IllegalArgumentException("Map constructed with an odd number of key/value pairs");
+		}
+		
+		for (int i = 0; i < keys.size(); i++) {
+			this.value.put(keys.get(i), values.get(i));
+		}
 	}
 
 	public Namespace getNamespace() {
@@ -303,25 +386,34 @@ class MapValue implements ICollection { // I'm trying to avoid conflicts with th
 		return Datatype.MAP;
 	}
 	
-	public IValue get(String identifier) {
-		return value.containsKey(identifier) ? value.get(identifier) : new Nil(); // they're going to return a nil for now
-	}
-	
-	public IValue set(String identifier, IValue entry) {
-		value.put(identifier, entry);
-		return this;
-	}
-	
 	public void setNamespace (Namespace ns) {
 		this.ns = ns;
 	}
 	
 	public String printOutput () {
-		return "nil";
+		return "map";
+	}
+
+	public IValue get(IValue identifier, Namespace ns) {
+		this.setNamespace(ns);
+		IValue evalKey = identifier.eval(this.ns); // for now, there's no restriction on what can be a key
+		IValue getVal = this.value.get(evalKey);
+		
+		return getVal == null ? new Nil() : getVal;
+	}
+
+	public IValue set(IValue entry, IValue location, Namespace ns) {
+		this.setNamespace(ns);
+		IValue eEntry = entry.eval(this.ns);
+		IValue eLocation = entry.eval(this.ns);
+		
+		this.value.put(eLocation, eEntry);
+		
+		return eEntry;
 	}
 }
 
-class Function implements IValue {
+class Function implements IValue { // represents a (first class) function
 
 	Namespace ns;
 	Sequence body;
@@ -342,12 +434,12 @@ class Function implements IValue {
 		return this.ns;
 	}
 
-	public IValue eval(Namespace ns) {
+	public IValue eval(Namespace ns) { // returns itself
 		this.setNamespace(ns);
 		return this;
 	}
 	
-	public IValue call(ArrayList<IValue> args, Namespace ns) {
+	public IValue call(ArrayList<IValue> args, Namespace ns) { // used by a FunctionCall to evaluate the contents of the Function
 		this.setNamespace(ns);
 		
 		Map<String, IValue> argNS = new HashMap<>();
@@ -360,7 +452,7 @@ class Function implements IValue {
 			argNS.put("@" + String.valueOf(i + 1), args.get(i)); // adds @1 ... @n to the namespace
 			
 			if (i < params.size()) {
-				argNS.put(params.get(i), args.get(i)); // adds the expected arguments keys to the namespace
+				argNS.put(params.get(i), args.get(i)); // adds the expected argument keys to the namespace (e.g 'f (a b) > {};' would add 'a' and 'b' to the function scope)
 			}
 		}
 		
@@ -379,15 +471,14 @@ class Function implements IValue {
 		return "function";
 	}
 	
+	public String toString () {
+		return "Func " + params.toString() + " -> " + body.toString();
+	}
+	
 }
 
-@FunctionalInterface
-interface IFuncOperation {
-	IValue apply(ArrayList<ALiteral> args);
-};
-
-class NamedFunction extends Function {
-	Map<String, IFuncOperation> funcs = new HashMap<>();
+class NamedFunction extends Function { // represents core functions
+	Utils utils = new Utils();
 	
 	String type;
 	IFuncOperation operation;
@@ -396,31 +487,9 @@ class NamedFunction extends Function {
 	NamedFunction (String type, Namespace ns) {
 		super(new ArrayList<String>(), new Sequence(new ArrayList<IExpression>(), ns), ns);
 		
-		ToDoubleFunction<ALiteral> literalToDouble = literal -> ((Number) literal.value).doubleValue(); 
-		
-		funcs.put("+", l -> new NumberLiteral(l.stream().collect(Collectors.summingDouble(e -> ((Number) e.value).doubleValue())), this.ns));
-		funcs.put("-", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a - b).getAsDouble(), this.ns));
-		funcs.put("*", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce(1, (a, b) -> a * b), this.ns));
-		funcs.put("^", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> Math.pow(a, b)).getAsDouble(), this.ns));
-		//funcs.put("/", l -> new NumberLiteral(((Number) l.get(0).value).doubleValue() / ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put("/", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a / b).getAsDouble(), this.ns));
-		
-		
-		funcs.put("<", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() < ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put(">", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() > ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put("<=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() <= ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put(">=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() >= ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put("=", l -> new BooleanLiteral(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue())), this.ns));
-		funcs.put("!=", l -> new BooleanLiteral(!(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue()))), this.ns));
-
-		funcs.put("and", l -> new BooleanLiteral(l.stream().allMatch(e -> (Boolean) e.value), this.ns));
-		funcs.put("or", l -> new BooleanLiteral(l.stream().anyMatch(e -> (Boolean) e.value), this.ns));
-		funcs.put("not", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
-		funcs.put("!", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
-		funcs.put("print", l -> new Nil());
-		
+		utils.loadNamed();
 		this.type = type;
-		this.operation = funcs.get(type);
+		this.operation = utils.getFunc(type);
 		
 		if (this.operation == null) {
 			throw new IllegalArgumentException("NamedFunction given a non-standard function");
@@ -430,31 +499,20 @@ class NamedFunction extends Function {
 	NamedFunction (String type) {
 		super(new ArrayList<String>(), new Sequence(new ArrayList<IExpression>(), new Namespace()));
 		
-		ToDoubleFunction<ALiteral> literalToDouble = literal -> ((Number) literal.value).doubleValue(); 
+		utils.loadNamed();
+		this.type = type;
+		this.operation = utils.getFunc(type);
 		
-		funcs.put("+", l -> new NumberLiteral(l.stream().collect(Collectors.summingDouble(e -> ((Number) e.value).doubleValue())), this.ns));
-		funcs.put("-", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a - b).getAsDouble(), this.ns));
-		funcs.put("*", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce(1, (a, b) -> a * b), this.ns));
-		funcs.put("^", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> Math.pow(a, b)).getAsDouble(), this.ns));
-		//funcs.put("/", l -> new NumberLiteral(((Number) l.get(0).value).doubleValue() / ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put("/", l -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a / b).getAsDouble(), this.ns));
-		
-		
-		funcs.put("<", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() < ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put(">", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() > ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put("<=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() <= ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put(">=", l -> new BooleanLiteral(((Number) l.get(0).value).doubleValue() >= ((Number) l.get(1).value).doubleValue(), this.ns));
-		funcs.put("=", l -> new BooleanLiteral(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue())), this.ns));
-		funcs.put("!=", l -> new BooleanLiteral(!(new Double(((Number) l.get(0).value).doubleValue()).equals(new Double(((Number) l.get(1).value).doubleValue()))), this.ns));
-
-		funcs.put("and", l -> new BooleanLiteral(l.stream().allMatch(e -> (Boolean) e.value), this.ns));
-		funcs.put("or", l -> new BooleanLiteral(l.stream().anyMatch(e -> (Boolean) e.value), this.ns));
-		funcs.put("not", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
-		funcs.put("!", l -> new BooleanLiteral(!((Boolean) l.get(0).value), this.ns));
-		funcs.put("print", l -> new Nil());
+		if (this.operation == null) {
+			throw new IllegalArgumentException("NamedFunction given a non-standard function");
+		}
+	}
+	
+	NamedFunction (String type, Utils utils) {
+		super(new ArrayList<String>(), new Sequence(new ArrayList<IExpression>(), new Namespace()));
 		
 		this.type = type;
-		this.operation = funcs.get(type);
+		this.operation = utils.getFunc(type);
 		
 		if (this.operation == null) {
 			throw new IllegalArgumentException("NamedFunction given a non-standard function");
@@ -464,36 +522,27 @@ class NamedFunction extends Function {
 	public IValue call (ArrayList<IValue> args, Namespace ns) {
 		this.setNamespace(ns);
 		
-		ArrayList<ALiteral> endArgs = new ArrayList<>();
+		ArrayList<IValue> endArgs = new ArrayList<>();
 		
 		if (this.type.equals("print")) {
 			StringBuilder end = new StringBuilder();
 			
-			args.stream().forEach(val -> end.append(val.printOutput() + "\n"));
+			args.stream().forEach(val -> end.append(val.toString()));
 			
-			if (firstPrint) {
-				System.out.println("Ferret output: \n\n" + end.toString());
-				firstPrint = false;
-			} else {
-				System.out.println(end.toString());
-			}
+			System.out.println(end.toString());
 			
 			return new StringLiteral(end.toString());
 		}
 		
 		for (int i = 0; i < args.size(); i++) { // all the args we get should be as reduced as possible, as we eval() them in the functionCall eval()
-			if (!(args.get(i) instanceof ALiteral)) { // if the IValue at the index i isn't a literal
-				// ERROR TODO
-			} else {
-				endArgs.add((ALiteral) args.get(i));
-			}
+			endArgs.add(args.get(i));
 		}
 		
-		return this.operation.apply(endArgs);
+		return this.operation.apply(endArgs, this.ns);
 	}
 }
 
-class Sequence implements IExpression { // CHANGE SEQUENCES TO SET THEIR OWN NAMESPACE ON EVAL AND GIVE ALL THE CHILDREN THE NAMESPACE
+class Sequence implements IExpression { // represents a sequence of IExpressions to be called in order
 	
 	ArrayList<IExpression> body;
 	Namespace ns;
@@ -536,6 +585,10 @@ class Sequence implements IExpression { // CHANGE SEQUENCES TO SET THEIR OWN NAM
 	
 	public String printOutput () {
 		return "sequence";
+	}
+	
+	public String toString () {
+		return "Sequence: {" + this.body.toString() + "}";
 	}
 	
 }
@@ -605,19 +658,29 @@ class FunctionCall extends ANode { // have to have their own args stored, actuql
 		return Datatype.AST_NODE;
 	}
 	
+	public String toString () {
+		return "Call " + this.maybeFunc.toString() + " on " + args.toString();
+	}
+	
 }
 
-class Operation extends ANode {
+class Operation extends ANode { // TODO: finish & create type enforce method
 	
-	Operation () {
-		super(new Namespace(new ArrayList<Map<String, IValue>>(Arrays.asList(new HashMap<String, IValue>()))));
+	static Utils utils = new Utils(); // hopefully saves space
+	
+	IFuncOperation operation;
+	ArrayList<IValue> operands;
+	
+	Operation (String type, ArrayList<IValue> operands) { // DON'
+		super(new Namespace());
+		utils.loadOps();
+		this.operation = utils.getOp(type);
+		this.operands = operands;
 	}
 
-	@Override
 	public IValue eval(Namespace ns) {
 		this.setNamespace(ns);
-		// TODO Auto-generated method stub
-		return null;
+		return this.operation.apply(operands, this.ns);
 	}
 	
 	public Datatype getType() {
@@ -654,48 +717,182 @@ class Definition extends ANode { // analogous to a variable assignment, e.g. 'a 
 		return Datatype.AST_NODE;
 	}
 	
+	public String toString () {
+		return "Def " + this.key +  " = " + this.value.toString();
+	}
+	
 }
 
-class Conditional extends ANode {
+class Conditional extends ANode { // represents a conditional, ie an if statement // DONT USE
 
-	IExpression condition;
-	IExpression then;
+	ArrayList<IExpression> conditions;
+	ArrayList<IExpression> thens;
 	IExpression elseExpr;
 	
 	Conditional(IExpression condition, IExpression then, IExpression elseExpr) {
 		super(new Namespace());
 		
-		this.condition = condition;
-		this.then = then;
+		this.conditions = Utils.list(condition);
+		this.thens = Utils.list(then);
 		this.elseExpr = elseExpr;
-		// TODO Auto-generated constructor stub
+	}
+	
+	Conditional(ArrayList<IExpression> condition, ArrayList<IExpression> then, IExpression elseExpr) {
+		super(new Namespace());
+		
+		if (condition.size() != then.size() || condition.size() < 1 || then.size() < 1) {
+			throw new IllegalArgumentException("Conditional Given an illegal number of arguments");
+		}
+		
+		this.conditions = condition;
+		this.thens = then;
+		this.elseExpr = elseExpr;
 	}
 	
 	public IValue eval(Namespace ns) {
 		this.setNamespace(ns);
-		IValue evaledCond = condition.eval(this.ns);
 		
-		if (!(evaledCond instanceof BooleanLiteral)) {
-			throw new IllegalArgumentException("Condition in if statement returned a " + evaledCond.getClass().getName() + ", not a boolean.");
+		IValue evaledCond;
+		
+		for (int i = 0; i < this.conditions.size(); i++) {
+			evaledCond = conditions.get(i).eval(this.ns);
+			
+			if (evaledCond instanceof Function) { // keeps syntax clean
+				evaledCond = ((Function) evaledCond).call(Utils.list(), this.ns); // mutates for simplicity's sake // gross
+			}
+			
+			if (!(evaledCond instanceof BooleanLiteral)) {
+				throw new IllegalArgumentException("Condition in if statement returned a " + evaledCond.getClass().getName() + ", not a boolean.");
+			}
+			
+			// The main calculation:
+			
+			if ((boolean) ((BooleanLiteral) evaledCond).value) { // lovely casting
+				return thens.get(i).eval(this.ns);
+			}
 		}
 		
-		// The main calculation:
-		
-		if ((boolean) ((BooleanLiteral) evaledCond).value) { // lovely casting
-			return then.eval(this.ns);
-		} else {
-			return elseExpr.eval(this.ns);
-		}
-		
+		return elseExpr.eval(this.ns);
 	}
 	
 }
 
-// TODO: Function, then fill out the parser with all the different ast ANodes
+@FunctionalInterface
+interface IFuncOperation {
+	IValue apply(ArrayList<IValue> args, Namespace ns);
+};
 
 class Utils {
+	
+	Map<String, IFuncOperation> funcs = new HashMap<>();
+	ToDoubleFunction<IValue> literalToDouble = literal -> ((Number) ((ALiteral) literal).value).doubleValue();
+	
+	Map<String, IFuncOperation> ops = new HashMap<>();
+	
+	Utils () {}
+	
 	static <T> ArrayList<T> list (T ...items) {
 		return new ArrayList<T>(Arrays.asList(items));
+	}
+	
+	void loadNamed () {
+		Namespace emptyNS = new Namespace();
+		
+		funcs.put("+", (l, ns) -> {
+			if (l.stream().anyMatch(e -> e instanceof StringLiteral)) { // concat if any are strings
+				StringBuilder end = new StringBuilder();
+				l.stream().forEach(val -> end.append(val.toString()));
+				return new StringLiteral(end.toString());
+			}
+			return new NumberLiteral(l.stream().collect(Collectors.summingDouble(e -> ((Number) ((ALiteral) e).value).doubleValue())));
+		});
+		funcs.put("-", (l, ns) -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a - b).getAsDouble()));
+		funcs.put("*", (l, ns) -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce(1, (a, b) -> a * b)));
+		funcs.put("^", (l, ns) -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> Math.pow(a, b)).getAsDouble()));
+		//funcs.put("/", l -> new NumberLiteral(((Number) l.get(0).value).doubleValue() / ((Number) l.get(1).value).doubleValue(), this.ns));
+		funcs.put("/", (l, ns) -> new NumberLiteral(l.stream().mapToDouble(literalToDouble).reduce((a, b) -> a / b).getAsDouble()));
+		
+		funcs.put("<", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() < ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
+		funcs.put(">", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() > ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
+		funcs.put("<=", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() <= ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
+		funcs.put(">=", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() >= ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
+		funcs.put("=", (l, ns) -> new BooleanLiteral(new Double(((Number) ((ALiteral) l.get(0)).value).doubleValue()).equals(new Double(((Number) ((ALiteral) l.get(1)).value).doubleValue()))));
+		funcs.put("!=", (l, ns) -> new BooleanLiteral(!(new Double(((Number) ((ALiteral) l.get(0)).value).doubleValue()).equals(new Double(((Number) ((ALiteral) l.get(1)).value).doubleValue())))));
+
+		funcs.put("and", (l, ns) -> new BooleanLiteral(l.stream().allMatch(e -> { return (Boolean) ((ALiteral) e).value; } )));
+		funcs.put("or", (l, ns) -> new BooleanLiteral(l.stream().anyMatch(e -> { return (Boolean) ((ALiteral) e).value; } )));
+		funcs.put("not", (l, ns) -> new BooleanLiteral(!((Boolean) ((ALiteral) l.get(0)).value)));
+		funcs.put("!", (l, ns) -> new BooleanLiteral(!((Boolean) ((ALiteral) l.get(0)).value)));
+		funcs.put("print", (l, ns) -> l.get(0));
+		
+		// conditionals
+		
+		funcs.put("if", (l, ns) -> {
+			//steps;
+			//make sure the first parameter evals to boolean, if it's a function, evaluate it
+			//evaluate either the second or third parameter, if it's a function, wrap it in a call
+			
+			//System.out.println(l);
+			
+			if (l.size() != 3) {
+				throw new IllegalArgumentException("If statement given " + l.size() + " instead of 3 arguments");
+			}
+			
+			IValue condition = l.get(0).eval(ns);
+			IValue then = l.get(1);
+			IValue els = l.get(2);
+			
+			if (condition instanceof Function) {
+				condition = ((Function) condition).call(Utils.list(), ns);
+			}
+			
+			if (!(condition instanceof BooleanLiteral)) {
+				throw new IllegalArgumentException("If statement condition doesn't evaluate to a boolean");
+			}
+			
+			// main thing
+			
+			if ((boolean) ((BooleanLiteral) condition).value) { // lovely casting
+				
+				if (then instanceof Function) {
+					then = ((Function) then).call(Utils.list(), ns);
+				}
+				
+				return then.eval(ns);
+			} else {
+				
+				if (els instanceof Function) {
+					els = ((Function) els).call(Utils.list(), ns);
+				}
+				
+				return els.eval(ns);
+			}
+		});
+		
+		// lofuncs
+		
+	}
+	
+	void loadOps () {
+		ops.put("...", (l, ns) -> {
+				ArrayList<IValue> end = new ArrayList<>();
+				for (int i = (int) ((double) ((NumberLiteral) l.get(0).eval(ns)).value); i < (int) ((double) ((NumberLiteral) l.get(1).eval(ns)).value); i++) {
+					end.add(new NumberLiteral(i));
+				}
+				return new ListValue(end);
+			});
+		
+		ops.put(":", (l, ns) -> {
+			return ((ICollection) l.get(0).eval(ns)).get(l.get(1).eval(ns), ns);
+		});
+	}
+	
+	IFuncOperation getFunc (String s) {
+		return this.funcs.get(s);
+	}
+	
+	IFuncOperation getOp (String s) {
+		return this.ops.get(s);
 	}
 }
 
@@ -1047,5 +1244,12 @@ class ValueTests {
 				)), new FunctionCall(new Reference("recursive"), Utils.list(new NumberLiteral(5)))); // call the function with args 5
 		
 		recursiveProgram.eval(namespace);
+		
+		t.checkExpect(Sequence.makeSequence(new Conditional( // else if example
+				Utils.list(new BooleanLiteral(false), new BooleanLiteral(false), new BooleanLiteral(true)), 
+				Utils.list(new StringLiteral("1st Option"),new StringLiteral("2nd Option"), new StringLiteral("3rd Option")), new StringLiteral("else case"))).eval(namespace),
+				new StringLiteral("3rd Option"));
+		
+		t.checkExpect(Sequence.makeSequence(new Operation("...", Utils.list(new NumberLiteral(0), new NumberLiteral(6)))).eval(namespace), new ListValue(Utils.list(new NumberLiteral(0), new NumberLiteral(1), new NumberLiteral(2), new NumberLiteral(3), new NumberLiteral(4), new NumberLiteral(5))));
 	}
 }

@@ -65,6 +65,10 @@ class SeparatorT extends AToken {
 		return true;
 	}
 	
+	public String toString () {
+		return "Separator " + "'" + this.value + "'";
+	}
+	
 }
 
 class OperatorT extends AToken {
@@ -75,6 +79,10 @@ class OperatorT extends AToken {
 	
 	boolean isOperator () {
 		return true;
+	}
+	
+	public String toString () {
+		return "\"" + (String) this.value + "\"";
 	}
 	
 }
@@ -136,7 +144,7 @@ class Lexer {
 			String current = String.valueOf(code.charAt(i));
 			
 			if (current.matches("\n")) {
-				result.add(new BreakT());
+				//result.add(new BreakT());
 				continue;
 			}
 			
@@ -162,25 +170,8 @@ class Lexer {
 				}
 			}
 			
-			if (current.matches("[a-zA-Z|+|\\-|*|/|<|>|&|=|!|^|@]")) { // if a Identifier
-				int nextIndex = indexUntilNotMatching(code, i, "[a-zA-Z0-9|+|\\-|*|/|&|<|>|=|!|^|@]");
-				String toAdd = code.substring(i, nextIndex + 1);
-				
-				if (toAdd.equals(">")) { // kinda gross
-					result.add(new OperatorT(">"));
-				} else if (toAdd.equals("nil")) {
-					result.add(new LiteralT(toAdd, Type.NIL));
-				} else {
-					result.add(toAdd.equals("true") || toAdd.equals("false") ? new LiteralT(toAdd, Type.BOOL) : new IdentifierT(toAdd)); // find where the identifier ends, essentially, when the next regex fails
-				}
-				
-				// also check if the string is actually a boolean (means true and false can't be overridden)
-				i = nextIndex; // I think this is how it's supposed to work, because the i++ will automatically advance it
-				continue;
-			}
-			
-			if (current.matches("[0-9]")) { // if a literal, ie if a number
-				int nextIndex = indexUntilNotMatching(code, i, "\\d|\\."); // if it's a number of a period
+			if (current.matches("[0-9|\\-]")) { // if a literal, ie if a number
+				int nextIndex = indexUntilNotMatching(code, i, "\\d|\\.|\\-"); // if it's a number of a period
 				
 				boolean found = false;
 				
@@ -205,6 +196,23 @@ class Lexer {
 				
 			}
 			
+			if (current.matches("[a-zA-Z|+|\\-|*|/|<|>|&|=|!|^|@]")) { // if a Identifier
+				int nextIndex = indexUntilNotMatching(code, i, "[a-zA-Z0-9|+|\\-|*|/|&|<|>|=|!|^|@]");
+				String toAdd = code.substring(i, nextIndex + 1);
+				
+				if (toAdd.equals(">")) { // kinda gross
+					result.add(new OperatorT(">"));
+				} else if (toAdd.equals("nil")) {
+					result.add(new LiteralT(toAdd, Type.NIL));
+				} else {
+					result.add(toAdd.equals("true") || toAdd.equals("false") ? new LiteralT(toAdd, Type.BOOL) : new IdentifierT(toAdd)); // find where the identifier ends, essentially, when the next regex fails
+				}
+				
+				// also check if the string is actually a boolean (means true and false can't be overridden)
+				i = nextIndex; // I think this is how it's supposed to work, because the i++ will automatically advance it
+				continue;
+			}
+			
 			if (current.matches("\\\"|'")) { // if a literal, ie a string denoted by "" or ''
 				int nextIndex = indexUntil(code, i + 1, current);
 				
@@ -216,7 +224,7 @@ class Lexer {
 			if (current.matches("#")) {
 				int nextIndex = indexUntil(code, i, "\n");
 				
-				result.add(new BreakT());
+				//result.add(new BreakT());
 				i = nextIndex;
 				continue;
 			}
@@ -313,5 +321,7 @@ class Examples {
 		
 		t.checkExpect(Lexer.lex("@1 @2;"), new ArrayList<AToken>(Arrays.asList(new IdentifierT("@1"), new IdentifierT("@2"), semicolon)));
 		
+		System.out.println(Lexer.lex("orange(1 2 3)"));
+		System.out.println(Lexer.lex("-1"));
 	}
 }

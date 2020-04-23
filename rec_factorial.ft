@@ -1,0 +1,23 @@
+# An implementation of factorial in ferret using recursion
+
+factorial (n) > {
+    if (<=(n 1) {
+        1;
+    } {
+        *(n factorial(-(n 1)));
+    });
+};
+
+deg 75;
+
+print(deg " factorial is " factorial (25) ".");
+
+forFun (str amnt) > {
+    if (<(1 amnt) {
+        +(str forFun(str -(amnt 1)));
+    } {
+        str;
+    });
+};
+
+print("Repeated string: " forFun ("ferret " 8));
