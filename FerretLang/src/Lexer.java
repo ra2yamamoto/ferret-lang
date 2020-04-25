@@ -134,8 +134,8 @@ class Lexer {
 		
 		Map<String, String> opMap = new HashMap<String, String>(); // the full form of the operators to test for
 		opMap.put(":", ":");
-		opMap.put("<", "<<");
-		opMap.put(">", ">>>");
+		opMap.put("<", "<");
+		opMap.put(">", ">");
 		opMap.put(".", "...");
 		
 		ArrayList<AToken> result = new ArrayList<AToken>();
@@ -197,7 +197,7 @@ class Lexer {
 			}
 			
 			if (current.matches("[a-zA-Z|+|\\-|*|/|<|>|&|=|!|^|@]")) { // if a Identifier
-				int nextIndex = indexUntilNotMatching(code, i, "[a-zA-Z0-9|+|\\-|*|/|&|<|>|=|!|^|@]");
+				int nextIndex = indexUntilNotMatching(code, i, "[a-zA-Z0-9|+|\\-|*|/|&|=|!|^|@]");
 				String toAdd = code.substring(i, nextIndex + 1);
 				
 				if (toAdd.equals(">")) { // kinda gross

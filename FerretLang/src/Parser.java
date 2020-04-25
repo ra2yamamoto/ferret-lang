@@ -5,6 +5,7 @@ import tester.Tester;
 class Parser {
 	ArrayList<AToken> input;
 	int index = 0;
+	boolean debugMode = false;
 	
 	Parser (ArrayList<AToken> input) {
 		this.input = input;
@@ -22,54 +23,32 @@ class Parser {
 		return new Sequence(exprs, new Namespace());
 	}
 	
-	IExpression expression () { // TODO: fix
-		IValue left = collectionAccess();
-		
-		System.out.println(current());
+	IExpression expression () {
+		IValue left = operation();
+		print("expr on " + left);
 		
 		if (current().value.equals("(") && !skip(till(new SeparatorT(")")) + 1).value.equals(">")) { // it's a call
+			print("call detected on" + current());
 			return call(left);
-		} else if (current().value.equals(";") || next().value.equals(";")) {
+		} else if (current().value.equals(";")) {
 			consume(new SeparatorT(";"));
 			return left;
 		} else {
-			return definition();
+			IExpression def = definition();
+			return def;
 		}
 	}
 	
 	IExpression definition () { // the previous is the identifier
-		IExpression def = new Definition((String) prev().getValue(), collectionAccess());
+		IExpression def = new Definition((String) prev().getValue(), operation());
 		expect(new SeparatorT(";")); // expect a semicolon after it
 		return def;
 	}
 	
-	IValue value () { // forward only
-		if (checkType(new LiteralT("", Type.NIL))) { // if its a literal, pass to primary
-			return primary();
-		} else if (checkType(new IdentifierT(""))) { // if its an identifier, it could be
-			if (next().value.equals("(")) { // if its a function call
-				advance();
-				return call(new Reference((String) prev().getValue()));
-			}
-			
-			return new Reference((String) advance().getValue());
-		} else if (check(new SeparatorT("(")) || check(new SeparatorT("{"))) { // it's a function
-			IValue f = function();
-			
-			if (check(new SeparatorT("("))) { // if there's a call on it
-				return call(f);
-			}
-			
-			return f;
-		} else { // PROBLEM
-			//System.out.println("here");
-			advance();
-			return new Nil();
-		}
-	}
-	
 	IValue function () { // TODO: fill out
-		//System.out.println("ffunc");
+		//print("ffunc");
+		
+		print("FUNC");
 		
 		ArrayList<IExpression> bodyList = new ArrayList<IExpression>();
 		ArrayList<String> params = new ArrayList<String>();
@@ -86,7 +65,7 @@ class Parser {
 			params = parameters();
 			expect(new OperatorT(">"));
 			expect(new SeparatorT("{"));
-
+			
 			while (!check(new SeparatorT("}"))) {
 				bodyList.add(expression());
 			}
@@ -95,14 +74,23 @@ class Parser {
 		
 		advance();
 		
+		print("current " + current());
+		
 		return new Function(params, new Sequence(bodyList, new Namespace()));
 	}
 	
 	IValue call (IValue func) {
-		//System.out.println("test");
-		IValue f = new FunctionCall(func, arguments());
-		//System.out.println(f);
-		consume(new SeparatorT(";"));
+		int beginning = this.index;
+		// after arguments, if the current is a > then go back to beginning, and call function
+		ArrayList<IValue> args = arguments();
+		
+		if (check(new OperatorT(">"))) {
+			this.index = beginning;
+			return function();
+		}
+		
+		IValue f = new FunctionCall(func, args);
+		//print(f);
 		return f;
 	}
 	
@@ -119,6 +107,9 @@ class Parser {
 			return new NumberLiteral((Number) Double.valueOf((String) advance().value));
 		} else if (checkLitType(Type.STRING)) {
 			return new StringLiteral((String) advance().value);
+		} else if (checkLitType(Type.NIL)) {
+			advance();
+			return new Nil();
 		} else {
 			throw new ParsingError("Primary expected");
 		}
@@ -127,6 +118,8 @@ class Parser {
 	ArrayList<String> parameters () { // should be starting at a (
 		advance();
 		ArrayList<String> end = new ArrayList<String>();
+		
+		print("param current " + current());
 		
 		while (!check(new SeparatorT(")"))) {
 			if (!checkType(new IdentifierT(""))) { // if it's not a literal
@@ -146,11 +139,13 @@ class Parser {
 	}
 	
 	ArrayList<IValue> arguments () { // should be starting at a ( TODO
+		print("args called");
+		
 		advance(); // move from the first one
 		ArrayList<IValue> end = new ArrayList<IValue>();
 		
 		while (!check(new SeparatorT(")"))) {
-			end.add(collectionAccess());
+			end.add(operation());
 			if (check(new SeparatorT(";"))) {
 				throw new ParsingError("Semicolon found in argument list");
 			}
@@ -162,7 +157,50 @@ class Parser {
 	}
 	
 	IValue operation () {
-		return collectionAccess();
+		return collectionInsert();
+	}
+	
+	IValue collectionInsert () {
+		IValue left = collectionAccess();
+		
+		if (check(new OperatorT("<"))) {
+			ArrayList<IValue> values = new ArrayList<>();
+			ArrayList<IValue> indeces = new ArrayList<>();
+			print("AAAHAHAHAHAHHAAA");
+			
+			while (check(new OperatorT("<"))) {
+				if (next().value.equals("<")) {
+					indeces.add(new NumberLiteral(-1));
+					advance();
+					advance();
+					print("chose at end, " + current());
+				} else {
+					advance();
+					indeces.add(collectionAccess());
+					print(current().toString());
+					if (!check(new OperatorT("<"))) {
+						throw new ParsingError("Expected closing '<' in list insert operation.");
+					}
+					advance();
+					print("chose somewhere, " + current());
+				}
+				
+				values.add(collectionAccess());
+			}
+			
+			ArrayList<IValue> consList = new ArrayList<>();
+			
+			for (int i = 0; i < indeces.size(); i++) {
+				consList.add(indeces.get(i));
+				consList.add(values.get(i));
+			}
+			
+			consList.add(left);
+			return new Operation("<<", consList);
+			
+		}
+		
+		return left;
 	}
 	
 	IValue collectionAccess () {
@@ -175,7 +213,7 @@ class Parser {
 	}
 	
 	IValue collectionCreate () {
-		System.out.println(current());
+		//print(current());
 		
 		if (check(new SeparatorT("["))) {
 			ArrayList<IValue> end = new ArrayList<IValue>();
@@ -188,13 +226,56 @@ class Parser {
 		}
 		
 		IValue left = value();
-		System.out.println(left);
+		//print(left);
 		
 		if (current().value.equals("...")) {
 			advance();
 			return new Operation("...", Utils.list(left, value()));
 		} else {
 			return left;
+		}
+	}
+	
+	IValue value () { // forward only
+		if (checkType(new LiteralT("", Type.NIL))) { // if its a literal, pass to primary
+			return primary();
+		} else if (check(new OperatorT(">"))) {
+			advance();
+			IValue c = call(new Reference(">"));
+			return c;
+		} else if (check(new OperatorT("<"))) {
+			advance();
+			if (check(new IdentifierT("="))) {
+				advance();
+				return call(new Reference("<="));
+			}
+			IValue c = call(new Reference("<"));
+			return c;
+		} else if (checkType(new IdentifierT(""))) { // if its an identifier, it could be
+			int checkpoint = this.index;
+			
+			if (next().value.equals("(")) { // if its a function call
+				advance();
+				IValue c = call(new Reference((String) prev().getValue()));
+				if (c instanceof FunctionCall) {
+					return c;
+				}
+			}
+			
+			this.index = checkpoint;
+			return new Reference((String) advance().getValue());
+		} else if (check(new SeparatorT("(")) || check(new SeparatorT("{"))) { // it's a function
+			IValue f = function();
+			
+			if (check(new SeparatorT("("))) { // if there's a call on it
+				return call(f);
+			}
+			
+			return f;
+		} else { // PROBLEM
+			//print("here");
+			advance();
+			return new Nil();
 		}
 	}
 	
@@ -281,6 +362,12 @@ class Parser {
 	boolean atEnd () {
 		return index > (input.size() - 1);
 	}
+	
+	void print (String s) {
+		if (debugMode) {
+			System.out.println(s);
+		}
+	}
 
 }
 
@@ -288,6 +375,10 @@ class ParsingError extends RuntimeException {
 	private static final long serialVersionUID = 1L;
 	ParsingError (String e) {
 		super(e);
+	}
+	
+	ParsingError (String e, AToken location) {
+		super(e + " at " + location);
 	}
 };
 
@@ -329,8 +420,8 @@ class TestParser {
 //				+ "};"
 //				+ ""
 //				+ "seq(1 7 {*(@1 @1)});");
-//		ArrayList<AToken> list = Lexer.lex("a [0 1 2 3 4 5]; +(a:3 a:4);"); // AAAAAAAAAAAA lists and real operators
-		ArrayList<AToken> list = Lexer.lex("a [0 1 2 3 4 5]; +(a:3 a:4);");
+		ArrayList<AToken> list = Lexer.lex("[] << 3 << 4 <1< 5;"); // AAAAAAAAAAAA lists and real operators
+//		ArrayList<AToken> list = Lexer.lex("a 1;");
 		System.out.println(list);
 		//ArrayList<AToken> list = Lexer.lex("");
 		Parser parseTest = new Parser(list);

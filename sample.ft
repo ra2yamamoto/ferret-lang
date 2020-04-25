@@ -1,0 +1,31 @@
+sum (list) > {
+    running 0;
+
+    for (0...len(list) {
+        running +(running list:@1);
+    });
+
+    running;
+};
+
+print("summing 0...26 = " sum(0...26));
+
+reverse (list) > {
+    for(len(list)...0 {
+        list:@1;
+    });
+};
+
+factorial (n) > {
+    running 1;
+
+    for (1...+(n 1) {
+        running *(running @1);
+    });
+
+    running;
+};
+
+print("reversing a b c d " reverse(["a" "b" "c" "d"]));
+
+factorial(10);

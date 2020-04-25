@@ -100,7 +100,7 @@ class Nil implements IValue { // analogous to null
 	}
 	
 	public IValue eval(Namespace ns) {
-		return null;
+		return this;
 	}
 	
 	public void setNamespace (Namespace ns) {}
@@ -111,7 +111,25 @@ class Nil implements IValue { // analogous to null
 
 	public Datatype getType() {
 		return Datatype.NIL;
-	}}
+	}
+	
+	public String toString () {
+		return "nil";
+	}
+	
+	public boolean equals (Object other) {
+		if (other instanceof Nil) {
+			return true;
+		}
+		
+		return false;
+	}
+	
+	public int hashCode () {
+		return 0;
+	}
+	
+}
 
 // LITERALS
 
@@ -272,7 +290,7 @@ class ListValue implements ICollection { // represents a list
 		
 		if (!(maybeIndex instanceof NumberLiteral)) {
 			throw new IllegalArgumentException("Get operation on List expected an index, given " + maybeIndex.getClass().getName());
-		} 
+		}
 		
 		identifierDouble = (double) ((NumberLiteral) maybeIndex).value;
 		
@@ -320,12 +338,13 @@ class ListValue implements ICollection { // represents a list
 			throw new IllegalArgumentException("Set operation on List given a non-integer index.");
 		}
 		
+		index = index < 0 ? this.value.size() + 1 + (int) index : index; // wraparound once
+		
 		if ((int) index > this.value.size() || (int) index < (-this.value.size())) {
 			System.out.println("Array Index out of bounds in List set call.");
 			return new Nil();
 		}
 		
-		index = index < 0 ? this.value.size() + 1 + (int) index : index; // wraparound once
 			// if the index is negative, wraparound
 		try {
 			
@@ -526,11 +545,8 @@ class NamedFunction extends Function { // represents core functions
 		
 		if (this.type.equals("print")) {
 			StringBuilder end = new StringBuilder();
-			
-			args.stream().forEach(val -> end.append(val.toString()));
-			
+			args.stream().forEach(val -> end.append(val == null ? "nil" : val.toString()));
 			System.out.println(end.toString());
-			
 			return new StringLiteral(end.toString());
 		}
 		
@@ -816,13 +832,26 @@ class Utils {
 		funcs.put(">", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() > ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
 		funcs.put("<=", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() <= ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
 		funcs.put(">=", (l, ns) -> new BooleanLiteral(((Number) ((ALiteral) l.get(0)).value).doubleValue() >= ((Number) ((ALiteral) l.get(1)).value).doubleValue()));
-		funcs.put("=", (l, ns) -> new BooleanLiteral(new Double(((Number) ((ALiteral) l.get(0)).value).doubleValue()).equals(new Double(((Number) ((ALiteral) l.get(1)).value).doubleValue()))));
-		funcs.put("!=", (l, ns) -> new BooleanLiteral(!(new Double(((Number) ((ALiteral) l.get(0)).value).doubleValue()).equals(new Double(((Number) ((ALiteral) l.get(1)).value).doubleValue())))));
+		funcs.put("=", (l, ns) -> new BooleanLiteral(l.stream().distinct().limit(2).count() <= 1));
+		funcs.put("!=", (l, ns) -> new BooleanLiteral(!(l.stream().distinct().limit(2).count() <= 1)));
 
 		funcs.put("and", (l, ns) -> new BooleanLiteral(l.stream().allMatch(e -> { return (Boolean) ((ALiteral) e).value; } )));
 		funcs.put("or", (l, ns) -> new BooleanLiteral(l.stream().anyMatch(e -> { return (Boolean) ((ALiteral) e).value; } )));
 		funcs.put("not", (l, ns) -> new BooleanLiteral(!((Boolean) ((ALiteral) l.get(0)).value)));
 		funcs.put("!", (l, ns) -> new BooleanLiteral(!((Boolean) ((ALiteral) l.get(0)).value)));
+		funcs.put("for", (l, ns) -> {
+			ArrayList<IValue> ret = new ArrayList<>();
+			
+			ListValue list = (ListValue) l.get(0);
+			Function func = (Function) l.get(1);
+			
+			for (int i = 0; i < list.value.size(); i++) {
+				ret.add(func.call(Utils.list(list.value.get(i)), ns));
+			}
+			
+			return new ListValue(ret);
+		});
+		funcs.put("len", (l, ns) -> new NumberLiteral( l.size() <= 0 ? 0 : ((ListValue) l.get(0)).value.size() ));
 		funcs.put("print", (l, ns) -> l.get(0));
 		
 		// conditionals
@@ -875,15 +904,35 @@ class Utils {
 	
 	void loadOps () {
 		ops.put("...", (l, ns) -> {
-				ArrayList<IValue> end = new ArrayList<>();
-				for (int i = (int) ((double) ((NumberLiteral) l.get(0).eval(ns)).value); i < (int) ((double) ((NumberLiteral) l.get(1).eval(ns)).value); i++) {
-					end.add(new NumberLiteral(i));
-				}
-				return new ListValue(end);
+				ArrayList<IValue> toRet = new ArrayList<>();
+				int start = (int) ((double) ((NumberLiteral) l.get(0).eval(ns)).value);
+				int end = (int) ((double) ((NumberLiteral) l.get(1).eval(ns)).value);
+				
+				if (start < end) {
+					for (int i = start; i < end; i++) {
+						toRet.add(new NumberLiteral(i));
+					}
+				} else {
+					for (int i = start - 1; i >= end; i--) {
+						toRet.add(new NumberLiteral(i));
+					}
+				}	
+				
+				return new ListValue(toRet);
 			});
 		
 		ops.put(":", (l, ns) -> {
 			return ((ICollection) l.get(0).eval(ns)).get(l.get(1).eval(ns), ns);
+		});
+		
+		ops.put("<<", (l, ns) -> { // alternating
+			ICollection list = (ICollection) l.get(l.size() - 1).eval(ns);
+			
+			for (int i = 0; i < (int) l.size() - 1; i += 2) {
+					list.set(l.get(i+1), l.get(i), ns);
+			}
+			
+			return list;
 		});
 	}
 	

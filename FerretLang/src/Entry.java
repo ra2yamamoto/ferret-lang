@@ -18,7 +18,7 @@ public class Entry {
 				try {
 					BufferedReader reader = new BufferedReader(new FileReader(args[0]));
 					code = reader.lines().collect(Collectors.joining("\n"));
-					System.out.println("Found.");
+					System.out.println("Found.\n");
 					System.out.println(code);
 					reader.close();
 				} catch (Exception e) {
@@ -29,7 +29,10 @@ public class Entry {
 				
 				System.out.println("\nRunning program...\n"); // the main execution
 				Parser p = new Parser(Lexer.lex(code));
-				System.out.println("=> " + p.parse().eval(Namespace.stdlib()));
+				//System.out.println(Lexer.lex(code));
+				IExpression program = p.parse();
+				//System.out.println(program);
+				System.out.println("=> " + program.eval(Namespace.stdlib()));
 			}
 	}
 	
