@@ -2,19 +2,22 @@
 
 fibonacci { # calculates the fibonacci sequence until a given number
     end [1];
-    old-number 0;
+    oldNumber 0;
     number 1;
     
     for (0...@1 { # for each element in a list of 0...n
-        sum +(old-number number);
+        sum +(oldNumber number);
         
         end << sum;
         
-        old-number number;
+        oldNumber number;
         number sum;
     });
 
     end;
-}
+};
 
-print(fibonacci(10));
+answer fibonacci(10);
+
+print(answer);
+answer;

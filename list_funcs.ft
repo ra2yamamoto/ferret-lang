@@ -1,0 +1,41 @@
+subsection (start end list) > {
+    for (start...end {
+        list:@1;
+    });
+};
+
+print(subsection(0 5 0...10));
+
+insert (element index list) > {
+    ret [];
+    beg subsection(0 index list);
+    end subsection(index len(list) list);
+
+    for (beg {
+        ret << @1;
+    });
+
+    ret << element;
+
+    for (end {
+        ret << @1;
+    });
+
+    ret;
+};
+
+print(insert(3 5 0...10));
+
+recursiveSequence (func start size) > {
+    end [];
+    last start;
+
+    for (+(start 1)...size {
+        last func(last @1);
+        end << last;
+    });
+
+    end;
+};
+
+print(recursiveSequence({+(@1 *(2 -(@2 1)));} 0 10));

@@ -18,14 +18,17 @@ reverse (list) > {
 
 factorial (n) > {
     running 1;
-
     for (1...+(n 1) {
         running *(running @1);
     });
-
     running;
 };
 
 print("reversing a b c d " reverse(["a" "b" "c" "d"]));
 
 factorial(10);
+
+f {a ""; for (0...100 {a +(a "//\\");}); a;};
+
+for (0...100 {print(f());});
+"copacabana";

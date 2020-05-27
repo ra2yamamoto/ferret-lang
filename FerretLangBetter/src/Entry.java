@@ -1,8 +1,5 @@
 import java.util.ArrayList;
 import java.util.stream.Collectors;
-
-import tester.Tester;
-
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -21,12 +18,6 @@ public class Entry {
 			Entry.repl();
 		} else if (args[0].equals("test")) {
 			System.out.println("Starting Test Harness...\n");
-			
-			if (args.length <= 1) {
-				System.out.println("Please specify a filepath.");
-				System.exit(0);
-			}
-			
 			String code = "";
 			
 			try {
@@ -42,17 +33,11 @@ public class Entry {
 			}
 			System.out.println("Testing...\n");
 			
-			StringBuilder expected = new StringBuilder();
-			
-			for (int i = 2; i < args.length; i++) {
-				expected.append(args[i] + " ");
-			}
-			
-			TestHarness harness = new TestHarness(code, new Parser(Lexer.lex(expected.toString())).parse().eval(Namespace.stdlib())); // does this make sense to do?
+			TestHarness harness = new TestHarness(code, new Parser(Lexer.lex(args[2])).parse().eval(new Namespace())); // does this make sense to do?
 			harness.runTests();
 			
 		} else {
-			System.out.println("Trying to access file...\n");
+			System.out.println("Trying to b file...\n");
 			String code = "";
 			
 				try {

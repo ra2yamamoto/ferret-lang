@@ -1,36 +1,42 @@
+# **Whitespace and Line Endings**
+White space is ignored for the most part. All statements must end with a semicolon (`;`). Line breaks will not be interpreted as the end of a statement unless they are on the inside of a separator (`{}[]()`), in which case they will be ignored.
+
+# **Identifiers**
+Identifiers follow the pattern `[a-zA-Z|+|\\-|*|/|<|>|&|=|!|^|@]` as an initial character, whereafter they can also include numbers.
+
+*Technically, there are no reserved method or variable identifiers.* All pre-defined methods (`+ - not and ...`) are defined as NamedFunctions in an initial global namespace, and can be redefined if so desired (This is not advised).
+
 # **Special Characters**
 
 `#` - a comment\
 `{}` - denotes a generic function, see generic function description\
 `[a b]` - denotes a list\
 `[a: b]` - denotes a map, see maps\
-`()` - denote parameters to a function
+`()` - denotes parameters and arguments to a function
 
-_Operators are normal functions_
+_Operators are treated as normal functions, added to the initial global namespace_
 
-_spaces separate items in a list/parameters_
-_all lines followed by a semicolon ';'_
+_spaces separate items in a list/parameters_ \
 
 # **Variables**
 
 Types: booleans, numbers, strings, functions, lists, maps
 
-setting/mutating variables is done by saying:\
+setting/mutating variables is done with the syntax:\
   `var_name var_value;`
   
    e.g.
 ```
 a 1; # creates a new variable a, set to 1 # this gets added to the local namespace
-b a; # b = a
+b a; # b = a # = 1
 b +(a b); # b = a + b # -> 2
 ```
 
-_namespaces are represented in the interpreter as a map, and are copied within functions and classes_
-  _parent namespace? child namespace?_
+_For more information on how scoping and namespaces are handled, see namespaces_
 
 # **Lists/Maps:**
 
-lists are written as []\
+lists are written as `[]`\
   e.g. 
     `my-list [0 1 2 3]; # a list of 0, 1, 2, 3`
   
@@ -40,12 +46,23 @@ and are accessed with `list:index`\
 my-list:3 # -> 3
 ["dog" "carrot" "orange"]:2 # -> "orange"
 ```
-maps are written as [], and should be used (for now) in place of OOP.\
+
+both maps and lists can be added to with the `<<` operator
+
+e.g.
+
+```
+my-list [0 1 2];
+my-list << 48; # add 3 to the list # [0 1 2 48]
+my-list:3; # -> 48
+```
+
+maps are written as `[:]`, and should be used (for now) in place of OOP.\
   Entries are written as alternating keys and pairs
 
   e.g.
 ```
-my-map [:key1 "pair1" :key2 "pair2"]; # the colons are what differentiates a map from a list # empty lists can be made with [:]
+my-map [key1: "pair1" key2: "pair2"]; # the colons are what differentiates a map from a list # empty maps can be made with [:]
 
 a-map [:];
 a-map << key: "value";
@@ -55,41 +72,103 @@ a-map; # -> [key: "value"]
 values are accessed with `map:key`
   e.g. `my-map:key2 # -> "pair2"`
 
-TODO: FUNCTIONS
+# **Functions**
+  Generic functions are denoted by `{ function_body }`, and Function calls are denoted by `{ function_body }( parameters )`
 
-# **Default Functions:**
-  operators: `+, -, *, /, <, >, <=, >=, =, !=, ^`\
-    _operators serve as normal functions taking in two parameters_
+Because of first class functions, most functions can and should be assigned to variables.
 
-  `value => function` e.g. ```a => {+(@1 2)} print # threading function that passes it along the chain, each feeding into the next```
+e.g.
+
+```
+f {}; # assigns a generic function to f
+f { +(@1 @2) }; # re assigns f to a generic function that returns the sum of the first two arguments given to it
+
+f(5 5); # -> 10
+```
+
+  Note that if a generic function is assigned to a variable, it can be called as `function_name( parameters )`.
+
+  It's important to keep in mind that any parentheses after a function will be interpreted as a function call, and thus will try to evaluate. Any function without parentheses will be interpreted as a function datatype.
+
+# **Function Parameters**
+  Parameters in Ferret can have two forms: named and unnamed.
+
+  Named parameters take the form of `(a b) > { function_body }`, whereas unnamed parameters can be used as `{ @1 @2 @3 ...}` where @n represents the nth parameter given to the function.
+
+  e.g.
+```
+(a) > {*(2 a)} (2) # -> 4 # generic function 1 # note that since parentheses appear after the function body, this is a function call
+# or...
+{*(2 @1)} (2) # -> 4 # generic function 2
+
+f (a b) > {
+  +(*(a b) 45)
+} # a named function, f, that adds 45 to the product of two numbers
+# or...
+f {
+  +(*(@1 @2) 45)
+} # a function with unnamed parameters
+
+f(15 2) # -> 75
+
+```
+
+_arity mismatch errors will only appear if too few arguments are passed to a function that expects more, otherwise, the @1...@n will try to account for the excess_
+
+```
+f { +(@1 5) }; # a generic function that returns + 5 to the first parameter, but doesn't require anything else
+f(5 13 213 2013 201); # -> 10 # an error won't be produced, as all the parameters are satisfied
+
+g (a b) > {}; # despite having no variable references, this will still enforce two parameters upon call
+g(2); # -> an error will be produced, as the function expected two arguments, but was given one.
+g(2 5 35); # -> an error won't be produced, as all the parameters are satisfied
+
+g (a b) > { +(a b @3) };
+g(2 3); # will produce an error, because a third argument is referenced despite not being included in the parameters
+```
+
+# **Scope and Namespaces**
+Scope works similarly to how you'd expect: when a function is created or called, it can still modify variables in its larger scope, but can also create local variables.
+\
+Additionally, if a function is defined inside a scope where the variable referenced doesn't exist, and it's called inside a scope where the variable does exist, it should reference the correct value.
+
+e.g.
+
+```
+f {
+print (a); # notice that a isn't a named parameter
+};
+
+g (a) > {
+  f(a);
+};
+
+g("hello") # -> hello
+
+# TODO: This could lead to issues with the @1...@n system, as the old maps will be checked before the new maps
+# maybe just iterate through the list of maps backwards?
+
+```
+
+# **Default Functions/Operators:**
+  standard functions: `+, -, *, /, <, >, <=, >=, =, !=, ^`\
+    _These aren't true operators._
+
+True operators:
+
+  `value => (function function...)` e.g. ```a => ({+(@1 2)} print) # threading function that passes it along the chain, each feeding into the next```
+
+`(value...) -> (function function...)` e.g. ```(4) -> (add(list1) add(list2)) # adds literal 4 to list1 and list2``` passes the value through each separately and sequentially
 
   `list >>> {*(@1 @2)}` # accumulates a list (foldl) into one value
 
   `list << value` # adds to a list or map
     e.g.
     `[1 2] << 3 # -> [1 2 3]`
-
-  `and (boolean boolean...) -> boolean`
-    returns true if both expressions return true
-  
-  `or (boolean boolean...) -> boolean`
-    returns true if any expression is true
-
-  `not (boolean) -> boolean`
-    returns the opposite of the given boolean
-
-  `++ (number) -> number`
-    returns the given number + 1
-
-  `-- (number) -> number`
-    returns the given umber - 1
+  `value...value` -> makes a list incrementing from the first to the second value.
 
   `print (string) -> void`
     prints the given string to the java console
 
-  `add (value list) -> list`
-    MUTATES the given list by adding the given value to the end
-  
-  `add (string value map) -> list`
-    MUTATES the given list by adding the given value to the end
-
+# **Loops**
+tbd (recursion for now)
