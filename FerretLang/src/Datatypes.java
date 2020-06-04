@@ -379,6 +379,10 @@ class ListValue implements ICollection { // represents a list
 	public String toString () {
 		return this.value.toString();
 	}
+	
+	public boolean equals (Object other) {
+		return ((ListValue) other).value.equals(this.value);
+	}
 }
 
 class MapValue implements ICollection { // represents a map

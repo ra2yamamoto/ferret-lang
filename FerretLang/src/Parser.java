@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Map;
 import tester.Tester;
 
@@ -382,7 +383,63 @@ class ParsingError extends RuntimeException {
 	}
 };
 
+class TestPair {
+	String program;
+	String output;
+	IExpression ASTOutput;
+	
+	TestPair (String program, String output) {
+		this.program = program;
+		this.output = output;
+	}
+	
+	TestPair (String program, IExpression output) {
+		this.program = program;
+		this.ASTOutput = output;
+	}
+	
+	void runInterpretTest (Tester t) {
+		t.checkExpect(TestPair.interpretString(this.program), TestPair.interpretString(this.output));
+	}
+	
+	void runParseTest (Tester t) {
+		t.checkExpect(new Parser(Lexer.lex(this.program)).parse(), this.output);
+	}
+	
+	static IValue interpretString (String in) {
+		return new Parser(Lexer.lex(in)).parse().eval(Namespace.stdlib());
+	}
+	
+	static void runInterpretTestsFromList (ArrayList<TestPair> tests, Tester t) {
+		tests.stream().forEach(test -> test.runInterpretTest(t));
+	}
+	static void runParseTestsFromList (ArrayList<TestPair> tests, Tester t) {
+		tests.stream().forEach(test -> test.runInterpretTest(t));
+	}
+}
+
 class TestParser {
+	void testInterpret (Tester t) {
+		TestPair.runInterpretTestsFromList(new ArrayList<TestPair>(Arrays.asList(
+				new TestPair("a 5; a;", "5;"),
+				new TestPair("square (a) > { *(a a); }; square(5);", "25;"),
+				new TestPair("square { *(@1 @1); }; square(5);", "25;"),
+				new TestPair("if (true 1 0);", "1;"),
+				new TestPair("sum (n) > {" // recursion
+						+ "    if (<(1 n) {"
+						+ "        +(n sum(-(n 1)));"
+						+ "    } {"
+						+ "        1;"
+						+ "    });"
+						+ "}; sum(5);", "15;")//,
+				//new TestPair("for (0...10 {+(1 @1);});", "[1 2 3 4 5 6 7 8 9 10];") // This works, but the namespaces are different
+				)), t);
+	}
+	
+	void testParse (Tester t) {
+		
+	}
+	
 	void testDefs(Tester t) {
 //		ArrayList<AToken> list = Lexer.lex("a (orange potato) > { print(+(orange potato) \"bruh\"); };\n a(1 2);");
 //		ArrayList<AToken> list = Lexer.lex("if ({true} {print(\"hello\")} print(\"goodbye\"));");
